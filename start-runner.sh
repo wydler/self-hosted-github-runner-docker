@@ -58,14 +58,6 @@ WAIT_SEC=10
 # INPUT
 #
 
-# GitHub Actions inputs
-# Set the GitHub Personal Access Token (PAT).
-# Retrieves the value from the INPUT_GITHUB_TOKEN environment variable.
-#MY_GITHUB_TOKEN=${GITHUB_TOKEN}
-#if [[ -z "$MY_GITHUB_TOKEN" ]]; then
-#       exit_with_failure "GitHub Personal Access Token (PAT) token is required!"
-#fi
-
 # Read GitHub token from Docker secret.
 # The secret is mounted by Docker at /run/secrets/github_token.
 if [[ -f "/run/secrets/github_token" ]]; then
