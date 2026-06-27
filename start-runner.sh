@@ -66,6 +66,8 @@ WAIT_SEC=10
 #       exit_with_failure "GitHub Personal Access Token (PAT) token is required!"
 #fi
 
+# Read GitHub token from Docker secret.
+# The secret is mounted by Docker at /run/secrets/github_token.
 if [[ -f "/run/secrets/github_token" ]]; then
 #    MY_GITHUB_TOKEN=$(cat /run/secrets/github_token)
     MY_GITHUB_TOKEN=$(tr -d '\n\r' < /run/secrets/github_token)
