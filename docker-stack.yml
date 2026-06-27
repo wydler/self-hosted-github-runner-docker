@@ -40,7 +40,7 @@ services:
          # New runner starts before old runner stops
         order: start-first
 
-        # Monitor update success        
+        # Monitor update success
         monitor: 60s
 
         # Rollback if update fails
