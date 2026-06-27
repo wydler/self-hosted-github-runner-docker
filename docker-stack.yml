@@ -17,7 +17,7 @@ services:
       - ./start-runner.sh:/start-runner.sh:ro
       - ./install.sh:/install.sh:ro
 
-    command:
+    entrypoint:
       - bash
       - /start-runner.sh
 
