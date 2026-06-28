@@ -2,6 +2,8 @@ services:
   github-runner:
     image: wydler/runner-images-hetzner-cloud:20260620.0004.1
 
+    hostname: "gh-runner-{{.Task.ID}}"
+
     environment:
       GITHUB_SCOPE: org
       GITHUB_ORGANIZATION: wydler
