@@ -34,6 +34,56 @@ function check_all_integers() {
         return 0
 }
 
+# Check the current status of the GitHub Actions runner.
+# Supports both organization and repository scoped runners.
+# Queries the matching GitHub API endpoint based on GITHUB_SCOPE.
+# Returns:
+#   true  - runner is currently processing a job (busy/active).
+#   false - runner is idle or was not found.
+function get_runner_busy() {
+
+    # Define the GitHub API endpoint variable
+    local url
+
+    # Select the correct API endpoint depending on runner scope
+    case "${MY_GITHUB_SCOPE}" in
+
+        # Organization runner API endpoint
+        org)
+            url="https://api.github.com/orgs/${MY_GITHUB_ORGANIZATION}/actions/runners"
+            ;;
+
+        # Repository runner API endpoint    
+        repo)
+            url="https://api.github.com/repos/${MY_GITHUB_REPOSITORY}/actions/runners"
+            ;;
+        
+        # Unknown scope, return not busy
+        *)
+            echo "false"
+            return 1
+            ;;
+    esac
+
+    # Query GitHub API and find the runner by its unique name
+    # The runner name is passed safely as a jq variable
+    curl -sSL \
+        -H "Authorization: Bearer ${MY_GITHUB_TOKEN}" \
+        -H "Accept: application/vnd.github+json" \
+        "${url}" \
+    | jq -r --arg name "$MY_RUNNER_NAME" '
+
+        # Iterate through all registered runners
+        .runners[]
+
+        # Select the runner matching the current container runner name
+        | select(.name == $name)
+
+        # Return the busy state, defaulting to false if missing
+        | .busy // false
+    '
+}
+
 # Cleanup runner registration on container shutdown.
 # Checks if the GitHub Actions runner is currently processing a job.
 #
