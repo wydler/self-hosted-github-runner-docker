@@ -34,35 +34,72 @@ function check_all_integers() {
         return 0
 }
 
-# Cleanup runner registration on container shutdown
+# Cleanup runner registration on container shutdown.
+# Checks if the GitHub Actions runner is currently processing a job.
+#
+# If the runner is busy:
+#   - Do not stop the runner process.
+#   - Detach the runner process from the cleanup handler.
+#   - Keep the container alive until the running workflow finishes.
+#
+# If the runner is idle:
+#   - Stop the runner process gracefully.
+#   - Wait for the process to exit.
+#   - Remove the runner registration from GitHub.
+#
+# This prevents active workflows from being interrupted during
+# Docker Swarm updates or container shutdown events.
 function cleanup() {
 
+    # Mark the beginning of the cleanup procedure
     echo ">>>> CLEANUP START >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>"
 
-    if [[ -n "${RUNNER_PID:-}" ]]; then
-      echo "Stopping runner process."
-      kill -TERM "${RUNNER_PID}" 2>/dev/null || true
+    # Log that a shutdown signal was received
+    echo "SIGTERM received → checking runner state"
 
-      echo "Waiting for runner process to stop..."
-      for i in {1..15}; do
-        if ! kill -0 "${RUNNER_PID}" 2>/dev/null; then
-            echo "Runner stopped after ${i}s."
-            break
-        fi
-        sleep 1
-      done
+    # Query GitHub API to check if this runner is currently busy
+    BUSY=$(get_runner_busy)
+
+    # Check if the runner is processing an active workflow job
+    if [[ "${BUSY}" == "true" ]]; then
+
+        # Active runner detected: do not terminate the workflow
+        echo "Runner is BUSY → NOT stopping gracefully, but keeping job alive"
+
+        # Remove the cleanup shell from the runner process lifecycle
+        # This prevents the runner from receiving the container shutdown signal
+        disown -h "${RUNNER_PID}" 2>/dev/null || true
+
+        # Keep the container running while the active job completes
+        # Swarm will not restart or replace the task while the process exists
+        tail -f /dev/null
     fi
 
+    # Runner is idle and can be safely stopped
+    echo "Runner idle → safe shutdown"
+
+    # Send SIGTERM to allow the runner to stop gracefully
+    kill -TERM "${RUNNER_PID}" 2>/dev/null || true
+
+    # Wait until the runner process has fully terminated
+    wait "${RUNNER_PID}" || true
+    
+
+    # Remove the runner registration from GitHub
+    # This prevents stale offline runners after container removal
+    echo "Removing runner registration..."
+
+    # Execute removal as the runner user because config.sh
+    # was created under this user account
     su -s /bin/bash "${MY_RUNNER_USER}" -c "
         cd '${MY_RUNNER_DIR}'
+        ./config.sh remove --token '${MY_GITHUB_RUNNER_TOKEN}'
+    " || echo "Runner removal failed"
 
-        if [[ -f "${MY_RUNNER_DIR}/.runner" ]]; then
-          ./config.sh remove --token "${MY_GITHUB_RUNNER_TOKEN}" || true
-        fi
-    "
-
+    # Mark the end of the cleanup procedure
     echo "<<<< CLEANUP END <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<"
 
+    # Exit successfully after cleanup
     exit 0
 }
 
