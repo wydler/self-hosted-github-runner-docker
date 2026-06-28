@@ -34,6 +34,39 @@ function check_all_integers() {
         return 0
 }
 
+# Cleanup runner registration on container shutdown
+function cleanup() {
+
+    echo ">>>> CLEANUP START >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>"
+
+    if [[ -n "${RUNNER_PID:-}" ]]; then
+      echo "Stopping runner process."
+      kill -TERM "${RUNNER_PID}" 2>/dev/null || true
+
+      echo "Waiting for runner process to stop..."
+      for i in {1..15}; do
+        if ! kill -0 "${RUNNER_PID}" 2>/dev/null; then
+            echo "Runner stopped after ${i}s."
+            break
+        fi
+        sleep 1
+      done
+    fi
+
+    su -s /bin/bash "${MY_RUNNER_USER}" -c "
+        cd '${MY_RUNNER_DIR}'
+
+        if [[ -f "${MY_RUNNER_DIR}/.runner" ]]; then
+          ./config.sh remove --token "${MY_GITHUB_RUNNER_TOKEN}" || true
+        fi
+    "
+
+    echo "<<<< CLEANUP END <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<"
+
+    exit 0
+}
+
+
 # Define required commands
 MY_COMMANDS=(
         curl
