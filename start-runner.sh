@@ -246,7 +246,7 @@ if [[ "${HTTP_CODE}" != "201" ]]; then
 fi
 
 # Read registration token
-MY_GITHUB_RUNNER_REGISTRATION_TOKEN=$(jq -er '.token' < "${MY_GITHUB_RUNNER_TOKEN_FILE}")
+MY_GITHUB_RUNNER_TOKEN=$(jq -er '.token' < "${MY_GITHUB_RUNNER_TOKEN_FILE}")
 
 #
 rm -f "${MY_GITHUB_RUNNER_TOKEN_FILE}"
@@ -277,7 +277,7 @@ cd '${MY_RUNNER_DIR}'
 
 ./config.sh \
   --url '${RUNNER_URL}' \
-  --token '${MY_GITHUB_RUNNER_REGISTRATION_TOKEN}' \
+  --token '${MY_GITHUB_RUNNER_TOKEN}' \
   --name '${MY_RUNNER_NAME}' \
   --labels '${MY_RUNNER_LABELS}' \
   ${RUNNER_GROUP_PARAM} \
