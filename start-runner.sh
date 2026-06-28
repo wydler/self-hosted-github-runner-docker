@@ -73,7 +73,7 @@ if [[ -z "$MY_RUNNER_GROUP" ]]; then
         exit_with_failure "GitHub Runner Group is required!"
 fi
 
-MY_RUNNER_LABELS=${RUNNER_LABELS}
+MY_RUNNER_LABELS=${RUNNER_LABELS},${IMAGE_VERSION}
 if [[ -z "$MY_RUNNER_LABELS" ]]; then
         exit_with_failure "GitHub Runner Labels are required!"
 fi
