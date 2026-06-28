@@ -290,6 +290,10 @@ cd '${MY_RUNNER_DIR}'
 echo -e "✓ Configuration was successfully."
 echo -e "<<<< STEP 4 Ende  <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<\n"
 
+#
+trap 'echo "SIGTERM received"; cleanup' SIGTERM
+trap 'echo "SIGINT received"; cleanup' SIGINT
+
 
 echo -e ">>>> STEP 5 Start >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>"
 echo "Starting runner..."
