@@ -46,7 +46,7 @@ services:
         monitor: 60s
 
         # Rollback if update fails
-        failure_action: rollback
+        failure_action: pause
 
       rollback_config:
         parallelism: 1
