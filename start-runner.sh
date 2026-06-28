@@ -384,7 +384,26 @@ trap 'echo "SIGINT received"; cleanup' SIGINT
 
 echo -e ">>>> STEP 5 Start >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>"
 echo "Starting runner..."
-exec su -s /bin/bash "${MY_RUNNER_USER}" -c "
+su -s /bin/bash "${MY_RUNNER_USER}" -c "
 cd '${MY_RUNNER_DIR}'
 exec ./run.sh
-"
+" &
+
+# Store the background process ID.
+# Used by cleanup() to stop or monitor the runner process.
+RUNNER_PID=$!
+
+# Wait until the runner process exits.
+# The exit code is preserved and forwarded to Docker.
+wait "${RUNNER_PID}"
+
+# Store the runner exit code.
+# GitHub Actions runner returns non-zero codes on failures.
+EXIT_CODE=$?
+
+# Log the runner shutdown result.
+echo "Runner exited with code ${EXIT_CODE}"
+
+# Exit with the same code as the runner process.
+# Allows Docker Swarm restart policies to react correctly.
+exit "${EXIT_CODE}"
