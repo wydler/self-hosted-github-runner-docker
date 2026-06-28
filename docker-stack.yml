@@ -23,7 +23,7 @@ services:
       - bash
       - /start-runner.sh
 
-    stop_grace_period: 30s
+    stop_grace_period: 24h
 
     deploy:
       replicas: 2
