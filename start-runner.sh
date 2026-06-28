@@ -106,9 +106,9 @@ case "${MY_GITHUB_SCOPE}" in
 
 esac
 
-# Set the name of the instance (default: gh-runner-$RANDOM)
-# If INPUT_NAME is set, use its value; otherwise, generate a random name using "gh-runner-$RANDOM".
-MY_RUNNER_NAME=${NAME:-"gh-runner-$RANDOM"}
+# Use the container hostname as the unique GitHub Actions Runner name.
+# In Docker Swarm the hostname is generated from the unique task ID, preventing runner name collisions across redeployments.
+MY_RUNNER_NAME=${HOSTNAME}
 
 # Check allowed characters
 if [[ ! "$MY_RUNNER_NAME" =~ ^[a-zA-Z0-9_-]{1,64}$ ]]; then
