@@ -22,10 +22,14 @@ function exit_with_failure() {
         exit 1
 }
 
+function exit_with_config_error() {
+        echo >&2 "CONFIGURATION ERROR: $1"
+        echo >&2 "Exiting with code 0"
+        exit 0
+}
 
 #
 function github_api() {
-
     local method="$1"
     local url="$2"
 
@@ -33,13 +37,16 @@ function github_api() {
         --fail \
         --silent \
         --show-error \
+        --location \
         --connect-timeout 5 \
         --max-time 15 \
-        -X "${method}" \
+        --retry 3 \
+        --retry-delay 2 \
+        -X "$method" \
         -H "Accept: application/vnd.github+json" \
         -H "Authorization: Bearer ${MY_GITHUB_TOKEN}" \
         -H "X-GitHub-Api-Version: 2022-11-28" \
-        "${url}"
+        "$url"
 }
 
 #
@@ -48,7 +55,7 @@ function github_api() {
 # Returns:
 #   https://github.com/<organization>
 #   https://github.com/<owner>/<repository>
-function get_github_runner_url() {
+function github_get_runner_url() {
 
     case "${MY_GITHUB_SCOPE}" in
 
@@ -73,7 +80,7 @@ function get_github_runner_url() {
 # Returns:
 #   https://api.github.com/orgs/<organization>/actions/runners
 #   https://api.github.com/repos/<owner>/<repository>/actions/runners
-function get_github_runners_api_url() {
+function github_get_runners_api_url() {
 
     case "${MY_GITHUB_SCOPE}" in
 
@@ -97,17 +104,17 @@ function get_github_runners_api_url() {
 # Returns:
 #   https://api.github.com/orgs/<organization>/actions/runners/registration-token
 #   https://api.github.com/repos/<owner>/<repository>/actions/runners/registration-token
-function get_github_registration_token_api_url() {
+function github_get_registration_token_api_url() {
 
-    echo "$(get_github_runners_api_url)/registration-token"
+    echo "$(github_get_runners_api_url)/registration-token"
 }
 
 
 #
-function get_registration_token() {
+function github_get_registration_token() {
 
     #
-    github_api POST "$(get_github_registration_token_api_url)" | jq -er '.token'
+    github_api POST "$(github_get_registration_token_api_url)" | jq -er '.token'
 }
 
 # Check the current status of the GitHub Actions runner.
@@ -116,11 +123,11 @@ function get_registration_token() {
 # Returns:
 #   true  - runner is currently processing a job (busy/active).
 #   false - runner is idle or was not found.
-function get_runner_busy() {
+function github_get_runner_busy() {
 
     # Query GitHub API and find the runner by its unique name
     # The runner name is passed safely as a jq variable
-    github_api GET "$(get_github_runners_api_url)" \
+    github_api GET "$(github_get_runners_api_url)" \
     | jq -r --arg name "$MY_RUNNER_NAME" '
 
         # Iterate through all registered runners
@@ -149,7 +156,7 @@ function get_runner_busy() {
 #
 # This prevents active workflows from being interrupted during
 # Docker Swarm updates or container shutdown events.
-function cleanup() {
+function github_delete_runner_cleanup() {
 
     # Mark the beginning of the cleanup procedure
     echo ">>>> CLEANUP START >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>"
@@ -158,25 +165,27 @@ function cleanup() {
     echo "SIGTERM received → checking runner state"
 
     # Query GitHub API to check if this runner is currently busy
-    # BUSY=$(get_runner_busy)
-	if ! BUSY=$(get_runner_busy); then
-		echo "Unable to determine runner state."
-		BUSY=false
+    # BUSY=$(github_get_runner_busy)
+        if ! BUSY=$(github_get_runner_busy); then
+                echo "Unable to determine runner state."
+                BUSY=false
     fi
 
     # Check if the runner is processing an active workflow job
     if [[ "${BUSY}" == "true" ]]; then
 
         # Active runner detected: do not terminate the workflow
-        echo "Runner is BUSY → NOT stopping gracefully, but keeping job alive"
+        echo "Runner is BUSY → ignoring SIGTERM until job finishes"
 
-        # Remove the cleanup shell from the runner process lifecycle
-        # This prevents the runner from receiving the container shutdown signal
-        disown -h "${RUNNER_PID}" 2>/dev/null || true
+        # Do not kill runner.
+        # Wait until the GitHub runner process exits after job completion.
+        while kill -0 "${RUNNER_PID}" 2>/dev/null; do
+        sleep 5
+        done
 
-        # Keep the container running while the active job completes
-        # Swarm will not restart or replace the task while the process exists
-        tail -f /dev/null
+        echo "Runner finished after graceful shutdown delay"
+
+        exit 0
     fi
 
     # Runner is idle and can be safely stopped
@@ -189,7 +198,7 @@ function cleanup() {
     wait "${RUNNER_PID}" || true
 
     #
-    MY_GITHUB_RUNNER_TOKEN=$(get_registration_token)
+    MY_GITHUB_RUNNER_TOKEN=$(github_get_registration_token)
 
     # Remove the runner registration from GitHub
     # This prevents stale offline runners after container removal
@@ -208,19 +217,40 @@ function cleanup() {
     exit 0
 }
 
+#
+function github_validate_runner_group() {
+
+    local group="$1"
+
+    if [[ "${MY_GITHUB_SCOPE}" != "org" ]]; then
+        return 0
+    fi
+
+    if ! github_api GET \
+      "https://api.github.com/orgs/${MY_GITHUB_ORGANIZATION}/actions/runner-groups" \
+      | jq -e --arg name "${group}" '
+          .runner_groups[]
+          | select(.name == $name)
+        ' >/dev/null
+    then
+        exit_with_config_error \
+          "GitHub Runner Group '${group}' does not exist or is not accessible."
+    fi
+}
+
 # Execute one or more commands as the runner user.
 # The current working directory is changed to the runner installation
 # directory before executing the supplied command.
 function run_as_runner() {
 
-	# 
+        #
     local command="$1"
-	
-	# 
-	[[ -d "${MY_RUNNER_DIR}" ]] \
+
+        #
+        [[ -d "${MY_RUNNER_DIR}" ]] \
     || exit_with_failure "Runner directory '${MY_RUNNER_DIR}' does not exist."
 
-	# 
+        #
     su -s /bin/bash "${MY_RUNNER_USER}" -c "
         cd '${MY_RUNNER_DIR}' || exit 1
         ${command}
@@ -298,6 +328,9 @@ case "${MY_GITHUB_SCOPE}" in
 
 esac
 
+#
+github_validate_runner_group "${MY_RUNNER_GROUP}"
+
 # Use the container hostname as the unique GitHub Actions Runner name.
 # In Docker Swarm the hostname is generated from the unique task ID, preventing runner name collisions across redeployments.
 MY_RUNNER_NAME=${HOSTNAME}
@@ -320,9 +353,6 @@ fi
 MY_RUNNER_USER="runner"
 
 
-#
-# Main program
-#
 echo -e ">>>> STEP 1 Start >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>"
 if ! id "${MY_RUNNER_USER}" >/dev/null 2>&1; then
     echo "Creating runner user..."
@@ -363,7 +393,7 @@ echo -e ">>>> STEP 3 Start >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>"
 echo "Create GitHub Actions Runner registration token..."
 
 # Create GitHub Actions registration token
-MY_GITHUB_RUNNER_TOKEN=$(get_registration_token)
+MY_GITHUB_RUNNER_TOKEN=$(github_get_registration_token)
 
 # Display
 echo -e "✓ Registration token created."
@@ -382,7 +412,7 @@ rm -f \
     "${MY_RUNNER_DIR}/.credentials_rsaparams"
 
 #
-RUNNER_URL=$(get_github_runner_url)
+RUNNER_URL=$(github_get_runner_url)
 
 #
 if [[ "${MY_GITHUB_SCOPE}" == "repo" ]]; then
@@ -410,8 +440,8 @@ echo -e "✓ Configuration was successfully."
 echo -e "<<<< STEP 4 Ende  <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<\n"
 
 #
-trap 'echo "SIGTERM received"; cleanup' SIGTERM
-trap 'echo "SIGINT received"; cleanup' SIGINT
+trap 'echo "SIGTERM received"; github_delete_runner_cleanup' SIGTERM
+trap 'echo "SIGINT received"; github_delete_runner_cleanup' SIGINT
 
 
 echo -e ">>>> STEP 5 Start >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>"
@@ -421,7 +451,7 @@ run_as_runner "
 " &
 
 # Store the background process ID.
-# Used by cleanup() to stop or monitor the runner process.
+# Used by github_delete_runner_cleanup() to stop or monitor the runner process.
 RUNNER_PID=$!
 
 # Wait until the runner process exits.
