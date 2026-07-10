@@ -22,16 +22,92 @@ function exit_with_failure() {
         exit 1
 }
 
-# Function to check all values of a comma separated list are integers
-function check_all_integers() {
-        IFS=',' read -ra _values <<< "$1"
-        for value in "${_values[@]}"; do
-                if [[ ! "$value" =~ ^[0-9]+$ ]]; then
-                        echo "$value"
-                        return 1
-                fi
-        done
-        return 0
+
+#
+function github_api() {
+
+    local method="$1"
+    local url="$2"
+
+    curl \
+        --fail \
+        --silent \
+        --show-error \
+        --connect-timeout 5 \
+        --max-time 15 \
+        -X "${method}" \
+        -H "Accept: application/vnd.github+json" \
+        -H "Authorization: Bearer ${MY_GITHUB_TOKEN}" \
+        -H "X-GitHub-Api-Version: 2022-11-28" \
+        "${url}"
+}
+
+#
+# Returns the GitHub URL depending on the configured runner scope.
+#
+# Returns:
+#   https://github.com/<organization>
+#   https://github.com/<owner>/<repository>
+function get_github_runner_url() {
+
+    case "${MY_GITHUB_SCOPE}" in
+
+        org)
+            echo "https://github.com/${MY_GITHUB_ORGANIZATION}"
+            ;;
+
+        repo)
+            echo "https://github.com/${MY_GITHUB_REPOSITORY}"
+            ;;
+
+        *)
+            exit_with_failure "Unsupported GitHub scope '${MY_GITHUB_SCOPE}'"
+            ;;
+    esac
+}
+
+#
+# Returns the GitHub Actions Runner API endpoint depending on the
+# configured runner scope.
+#
+# Returns:
+#   https://api.github.com/orgs/<organization>/actions/runners
+#   https://api.github.com/repos/<owner>/<repository>/actions/runners
+function get_github_runners_api_url() {
+
+    case "${MY_GITHUB_SCOPE}" in
+
+        org)
+            echo "https://api.github.com/orgs/${MY_GITHUB_ORGANIZATION}/actions/runners"
+            ;;
+
+        repo)
+            echo "https://api.github.com/repos/${MY_GITHUB_REPOSITORY}/actions/runners"
+            ;;
+
+        *)
+            exit_with_failure "Unsupported GitHub scope '${MY_GITHUB_SCOPE}'"
+            ;;
+    esac
+}
+
+#
+# Returns the GitHub Actions Runner registration token API endpoint.
+#
+# Returns:
+#   https://api.github.com/orgs/<organization>/actions/runners/registration-token
+#   https://api.github.com/repos/<owner>/<repository>/actions/runners/registration-token
+function get_github_registration_token_api_url() {
+
+    echo "$(get_github_runners_api_url)/registration-token"
+}
+
+
+#
+function get_registration_token() {
+
+    #
+    github_api POST "$(get_github_registration_token_api_url)" | jq -er '.token'
 }
 
 # Check the current status of the GitHub Actions runner.
@@ -42,35 +118,9 @@ function check_all_integers() {
 #   false - runner is idle or was not found.
 function get_runner_busy() {
 
-    # Define the GitHub API endpoint variable
-    local url
-
-    # Select the correct API endpoint depending on runner scope
-    case "${MY_GITHUB_SCOPE}" in
-
-        # Organization runner API endpoint
-        org)
-            url="https://api.github.com/orgs/${MY_GITHUB_ORGANIZATION}/actions/runners"
-            ;;
-
-        # Repository runner API endpoint    
-        repo)
-            url="https://api.github.com/repos/${MY_GITHUB_REPOSITORY}/actions/runners"
-            ;;
-        
-        # Unknown scope, return not busy
-        *)
-            echo "false"
-            return 1
-            ;;
-    esac
-
     # Query GitHub API and find the runner by its unique name
     # The runner name is passed safely as a jq variable
-    curl -sSL \
-        -H "Authorization: Bearer ${MY_GITHUB_TOKEN}" \
-        -H "Accept: application/vnd.github+json" \
-        "${url}" \
+    github_api GET "$(get_github_runners_api_url)" \
     | jq -r --arg name "$MY_RUNNER_NAME" '
 
         # Iterate through all registered runners
@@ -108,7 +158,11 @@ function cleanup() {
     echo "SIGTERM received → checking runner state"
 
     # Query GitHub API to check if this runner is currently busy
-    BUSY=$(get_runner_busy)
+    # BUSY=$(get_runner_busy)
+	if ! BUSY=$(get_runner_busy); then
+		echo "Unable to determine runner state."
+		BUSY=false
+    fi
 
     # Check if the runner is processing an active workflow job
     if [[ "${BUSY}" == "true" ]]; then
@@ -133,7 +187,9 @@ function cleanup() {
 
     # Wait until the runner process has fully terminated
     wait "${RUNNER_PID}" || true
-    
+
+    #
+    MY_GITHUB_RUNNER_TOKEN=$(get_registration_token)
 
     # Remove the runner registration from GitHub
     # This prevents stale offline runners after container removal
@@ -141,8 +197,7 @@ function cleanup() {
 
     # Execute removal as the runner user because config.sh
     # was created under this user account
-    su -s /bin/bash "${MY_RUNNER_USER}" -c "
-        cd '${MY_RUNNER_DIR}'
+    run_as_runner "
         ./config.sh remove --token '${MY_GITHUB_RUNNER_TOKEN}'
     " || echo "Runner removal failed"
 
@@ -151,6 +206,25 @@ function cleanup() {
 
     # Exit successfully after cleanup
     exit 0
+}
+
+# Execute one or more commands as the runner user.
+# The current working directory is changed to the runner installation
+# directory before executing the supplied command.
+function run_as_runner() {
+
+	# 
+    local command="$1"
+	
+	# 
+	[[ -d "${MY_RUNNER_DIR}" ]] \
+    || exit_with_failure "Runner directory '${MY_RUNNER_DIR}' does not exist."
+
+	# 
+    su -s /bin/bash "${MY_RUNNER_USER}" -c "
+        cd '${MY_RUNNER_DIR}' || exit 1
+        ${command}
+    "
 }
 
 
@@ -171,8 +245,6 @@ for MY_COMMAND in "${MY_COMMANDS[@]}"; do
         fi
 done
 
-# Retry wait time in secounds
-WAIT_SEC=10
 
 #
 # INPUT
@@ -248,6 +320,9 @@ fi
 MY_RUNNER_USER="runner"
 
 
+#
+# Main program
+#
 echo -e ">>>> STEP 1 Start >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>"
 if ! id "${MY_RUNNER_USER}" >/dev/null 2>&1; then
     echo "Creating runner user..."
@@ -284,60 +359,13 @@ echo -e "<<<< STEP 2 Ende  <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<\n"
 
 echo -e ">>>> STEP 3 Start >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>"
 
-#
-MY_GITHUB_RUNNER_TOKEN_FILE=$(mktemp)
-
-#
-if [[ "${MY_GITHUB_SCOPE}" == "repo" ]]; then
-
-    REGISTRATION_URL="https://api.github.com/repos/${MY_GITHUB_REPOSITORY}/actions/runners/registration-token"
-else
-
-    REGISTRATION_URL="https://api.github.com/orgs/${MY_GITHUB_ORGANIZATION}/actions/runners/registration-token"
-fi
-
-echo "${REGISTRATION_URL}"
-
-# Create GitHub Actions registration token
+# Display
 echo "Create GitHub Actions Runner registration token..."
 
-HTTP_CODE=$(curl -sSL \
-        -X "POST" \
-        -o "${MY_GITHUB_RUNNER_TOKEN_FILE}" \
-        -w "%{http_code}" \
-        -H "Accept: application/vnd.github+json" \
-        -H "Authorization: Bearer ${MY_GITHUB_TOKEN}" \
-        -H "X-GitHub-Api-Version: 2022-11-28" \
-        "${REGISTRATION_URL}"
-)
+# Create GitHub Actions registration token
+MY_GITHUB_RUNNER_TOKEN=$(get_registration_token)
 
-if [[ "${HTTP_CODE}" != "201" ]]; then
-
-    echo "GitHub API returned HTTP ${HTTP_CODE}."
-
-    if jq -e '.message' "${MY_GITHUB_RUNNER_TOKEN_FILE}" >/dev/null 2>&1; then
-
-        # echo "GitHub error: $(jq -r '"\(.message) \(.errors // empty)"' "${MY_GITHUB_RUNNER_TOKEN_FILE}")"
-        echo "GitHub error: $(jq -r '[.message, .errors] | map(select(. != null)) | join(" - ")' "${MY_GITHUB_RUNNER_TOKEN_FILE}")"
-
-    else
-
-        echo "Unexpected response:"
-        cat "${MY_GITHUB_RUNNER_TOKEN_FILE}"
-
-    fi
-
-    rm -f "${MY_GITHUB_RUNNER_TOKEN_FILE}"
-
-    exit_with_failure "Failed to retrieve GitHub Actions Runner registration token!"
-fi
-
-# Read registration token
-MY_GITHUB_RUNNER_TOKEN=$(jq -er '.token' < "${MY_GITHUB_RUNNER_TOKEN_FILE}")
-
-#
-rm -f "${MY_GITHUB_RUNNER_TOKEN_FILE}"
-
+# Display
 echo -e "✓ Registration token created."
 
 echo -e "<<<< STEP 3 Ende  <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<\n"
@@ -347,20 +375,24 @@ echo -e ">>>> STEP 4 Start >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>"
 echo "Configuring runner: ${MY_RUNNER_NAME}"
 
 # alte Konfig entfernen (wichtig bei restart: always oder restart_policy: on-failure)
-rm -f .runner .credentials .credentials_rsaparams || true
+#rm -f .runner .credentials .credentials_rsaparams || true
+rm -f \
+    "${MY_RUNNER_DIR}/.runner" \
+    "${MY_RUNNER_DIR}/.credentials" \
+    "${MY_RUNNER_DIR}/.credentials_rsaparams"
+
+#
+RUNNER_URL=$(get_github_runner_url)
 
 #
 if [[ "${MY_GITHUB_SCOPE}" == "repo" ]]; then
-    RUNNER_URL="https://github.com/${MY_GITHUB_REPOSITORY}"
     RUNNER_GROUP_PARAM=""
 else
-    RUNNER_URL="https://github.com/${MY_GITHUB_ORGANIZATION}"
     RUNNER_GROUP_PARAM="--runnergroup ${MY_RUNNER_GROUP}"
 fi
 
 #
-su -s /bin/bash "${MY_RUNNER_USER}" -c "
-cd '${MY_RUNNER_DIR}'
+run_as_runner "
 
 ./config.sh \
   --url '${RUNNER_URL}' \
@@ -384,9 +416,8 @@ trap 'echo "SIGINT received"; cleanup' SIGINT
 
 echo -e ">>>> STEP 5 Start >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>"
 echo "Starting runner..."
-su -s /bin/bash "${MY_RUNNER_USER}" -c "
-cd '${MY_RUNNER_DIR}'
-exec ./run.sh
+run_as_runner "
+  exec ./run.sh
 " &
 
 # Store the background process ID.
