@@ -4,6 +4,9 @@ services:
 
     hostname: "gh-runner-{{.Task.ID}}"
 
+    networks:
+      - ci_github_network
+
     environment:
       GITHUB_SCOPE: org
       GITHUB_ORGANIZATION: wydler
@@ -23,7 +26,7 @@ services:
       - bash
       - /start-runner.sh
 
-    stop_grace_period: 24h
+    stop_grace_period: 2h
 
     deploy:
       replicas: 2
@@ -31,13 +34,14 @@ services:
       restart_policy:
         condition: any
         delay: 5s
+        max_attempts: 3
 
       update_config:
         # Update one runner at a time
         parallelism: 1
 
         # Wait between updates
-        delay: 10s
+        delay: 60s
 
          # New runner starts before old runner stops
         order: start-first
@@ -76,3 +80,10 @@ services:
 secrets:
   github_token:
     file: ./github_token.txt
+
+
+networks:
+  ci_github_network:
+    driver: overlay
+    attachable: true
+    external: true
