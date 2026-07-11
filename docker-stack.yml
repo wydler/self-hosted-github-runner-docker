@@ -58,9 +58,9 @@ services:
         order: stop-first
 
       # spread runners over swarm nodes (Optional)
-      # placement:
-      #  constraints:
-      #    - node.role == worker
+      placement:
+        preferences:
+          - spread: node.hostnam
 
       resources:
         limits:
