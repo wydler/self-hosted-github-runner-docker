@@ -14,7 +14,7 @@ services:
       GITHUB_REPOSITORY: wydler/self-hosted-github-runner-docker
 
       RUNNER_GROUP: Daniel
-      RUNNER_LABELS: "docker,linux,self-hosted"
+      RUNNER_LABELS: "docker,linux,self-hosted,ubuntu-slim"
 
     secrets:
       - github_token
