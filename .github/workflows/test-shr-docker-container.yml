@@ -3,6 +3,12 @@ name: Test SHR als Docker Container
 
 "on":
   workflow_dispatch:
+    inputs:
+      wait:
+        description: "Wait 5 minutes at the end of the workflow"
+        type: boolean
+        required: false
+        default: false
 
 jobs:
   build:
@@ -66,5 +72,6 @@ jobs:
         run: env
 
       - name: Wait for inspection
+        if: ${{ inputs.wait }}
         shell: bash
         run: sleep 300s
