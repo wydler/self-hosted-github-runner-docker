@@ -1,0 +1,42 @@
+{
+  $schema: 'https://docs.renovatebot.com/renovate-schema.json',
+  extends: [
+    'config:recommended',
+    'helpers:pinGitHubActionDigests',
+  ],
+  commitMessagePrefix: 'chore(deps):',
+  timezone: 'Europe/Berlin',
+  prHourlyLimit: 0,
+  prConcurrentLimit: 0,
+  automerge: false,
+  minimumReleaseAge: '7 days',
+  minimumReleaseAgeBehaviour: 'timestamp-required',
+  internalChecksFilter: 'strict',  
+  enabledManagers: [
+    'github-actions',
+  ],
+
+
+  packageRules: [
+    {
+      // ===========================================================================
+      // GitHub Actions
+      // ===========================================================================  
+      matchManagers: [
+        'github-actions',
+      ],
+      matchPackageNames: [
+        '*',
+      ],
+      labels: [
+        'dependencies',
+        'github_actions',
+      ],
+      draftPR: true,
+      additionalBranchPrefix: 'github_action/',
+      branchTopic: '{{depNameSanitized}}-{{#if newVersion}}{{newVersion}}{{else}}{{currentValue}}-{{newDigest}}{{/if}}',
+      commitMessageTopic: '{{depName}}',
+      commitMessageExtra: '{{#if newVersion}}from {{currentVersion}} to {{newVersion}}{{else}}{{newValue}} from {{currentDigestShort}} to {{newDigestShort}}{{/if}}',
+    },
+  ],
+}
