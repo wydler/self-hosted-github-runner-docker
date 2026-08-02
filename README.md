@@ -13,7 +13,6 @@ It supports:
 
 - Organization runners
 - Repository runners
-- Docker Compose deployments
 - Docker Swarm deployments
 - Ephemeral runners
 - Secure token handling using Docker secrets
@@ -76,7 +75,7 @@ GitHub Actions Runner
 
 - Docker Engine
 - Docker Compose
-- Docker Swarm (optional)
+- Docker Swarm
 - GitHub Fine-grained Personal Access Token
 
 
@@ -265,14 +264,7 @@ Runner removed
 
 # Troubleshooting
 
-View container logs:
-
-```bash
-docker compose logs -f <container>
-```
-
-
-Docker Swarm logs:
+View Docker Swarm logs:
 
 ```bash
 docker service logs -f ci_github-runner
@@ -280,7 +272,7 @@ docker service logs -f ci_github-runner
 
 
 Check runners:
-
+VV
 ```
 GitHub
  → Settings
