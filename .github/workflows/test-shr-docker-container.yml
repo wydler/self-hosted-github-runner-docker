@@ -1,0 +1,70 @@
+---
+name: Test SHR als Docker Container
+
+"on":
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on:
+      - self-hosted
+      - ubuntu-slim
+
+    steps:
+      - name: Show runner information
+        shell: bash
+        run: |
+          {
+            echo "## Runner information"
+            echo ""
+            echo "| Property | Value |"
+            echo "|---|---|"
+            echo "| Name | $RUNNER_NAME |"
+            echo "| OS | $RUNNER_OS |"
+            echo "| Arch | $RUNNER_ARCH |"
+            echo "| Image | $IMAGEDATA_NAME |"
+            echo "| Version | $IMAGE_VERSION |"
+          }
+
+      - name: List working directory
+        shell: bash
+        run: ls -lisa
+
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+
+      - name: Print test message
+        shell: bash
+        run: echo "Hello from self-hosted runner"
+
+      - name: Create test file
+        shell: bash
+        run: echo "Hallo Welt" > test.txt
+
+      - name: List working directory after file creation
+        shell: bash
+        run: ls -lisa
+
+      - name: Show current working directory
+        shell: bash
+        run: pwd
+
+      - name: List /home directory
+        shell: bash
+        run: ls -lisa /home/
+
+      - name: Show passwd file
+        shell: bash
+        run: cat /etc/passwd
+
+      - name: Show current user
+        shell: bash
+        run: whoami
+
+      - name: Show environment variables
+        shell: bash
+        run: env
+
+      - name: Wait for inspection
+        shell: bash
+        run: sleep 300s
