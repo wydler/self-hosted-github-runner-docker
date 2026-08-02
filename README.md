@@ -127,8 +127,21 @@ Do not commit this file.
 
 # Installation
 
-Clone repository:
+1. This script will install docker and containerd:
+  ```
+  curl https://raw.githubusercontent.com/wydler/self-hosted-github-runner-docker/refs/heads/master/misc/02-docker.io-installation.sh | bash
+  ```
 
+2. For IPv6 support, edit the Docker daemon configuration file, located at `/etc/docker/daemon.json`. Configure the following parameters and run `systemctl restart docker.service` to restart docker:
+  ```
+  {
+    "experimental": true,
+    "ip6tables": true
+  }
+  ```
+
+
+3. Clone the repository to the correct folder for docker container:
 ```bash
 git clone https://github.com/wydler/self-hosted-github-runner-docker.git /opt/containers/self-hosted-github-runner-docker
 git -C /opt/containers/self-hosted-github-runner-docker checkout $(git -C /opt/containers/self-hosted-github-runner-docker tag | tail -1)
