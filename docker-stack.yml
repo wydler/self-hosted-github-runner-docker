@@ -1,0 +1,89 @@
+services:
+  github-runner:
+    image: wydler/runner-images-hetzner-cloud:20260620.0004.1
+
+    hostname: "gh-runner-{{.Task.ID}}"
+
+    networks:
+      - ci_github_network
+
+    environment:
+      GITHUB_SCOPE: org
+      GITHUB_ORGANIZATION: wydler
+      GITHUB_REPOSITORY: wydler/test5
+
+      RUNNER_GROUP: Daniel
+      RUNNER_LABELS: "docker,linux,self-hosted"
+
+    secrets:
+      - github_token
+
+    volumes:
+      - ./start-runner.sh:/start-runner.sh:ro
+      - ./install.sh:/install.sh:ro
+
+    entrypoint:
+      - bash
+      - /start-runner.sh
+
+    stop_grace_period: 2h
+
+    deploy:
+      replicas: 2
+
+      restart_policy:
+        condition: any
+        delay: 5s
+        max_attempts: 3
+
+      update_config:
+        # Update one runner at a time
+        parallelism: 1
+
+        # Wait between updates
+        delay: 60s
+
+         # New runner starts before old runner stops
+        order: start-first
+
+        # Monitor update success
+        monitor: 60s
+
+        # Rollback if update fails
+        failure_action: pause
+
+      rollback_config:
+        parallelism: 1
+        delay: 10s
+        order: stop-first
+
+      # spread runners over swarm nodes (Optional)
+      placement:
+        preferences:
+          - spread: node.hostname
+
+      resources:
+        limits:
+          cpus: "1"
+          memory: 1G
+        reservations:
+          cpus: "0.5"
+          memory: 512M
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+
+secrets:
+  github_token:
+    file: ./github_token.txt
+
+
+networks:
+  ci_github_network:
+    driver: overlay
+    attachable: true
+    external: true
