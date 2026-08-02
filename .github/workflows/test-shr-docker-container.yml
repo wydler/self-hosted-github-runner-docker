@@ -72,5 +72,6 @@ jobs:
         run: env
 
       - name: Wait for inspection
+        if: ${{ inputs.wait }}              
         shell: bash
         run: sleep 300s
