@@ -17,7 +17,7 @@ permissions:
 jobs:
   validate-yaml:
     name: YAML Linter
-    runs-on: ubuntu-slim
+    runs-on: ubuntu-latest
 
     permissions:
       contents: read
