@@ -1,3 +1,4 @@
+---
 services:
   github-runner:
     image: wydler/runner-images-hetzner-cloud:20260620.0004.1
@@ -43,7 +44,7 @@ services:
         # Wait between updates
         delay: 60s
 
-         # New runner starts before old runner stops
+        # New runner starts before old runner stops
         order: start-first
 
         # Monitor update success
