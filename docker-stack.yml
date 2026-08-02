@@ -60,7 +60,7 @@ services:
       # spread runners over swarm nodes (Optional)
       placement:
         preferences:
-          - spread: node.hostnam
+          - spread: node.hostname
 
       resources:
         limits:
