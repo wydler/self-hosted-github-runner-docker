@@ -44,7 +44,7 @@ services:
         # Wait between updates
         delay: 60s
 
-         # New runner starts before old runner stops
+        # New runner starts before old runner stops
         order: start-first
 
         # Monitor update success
