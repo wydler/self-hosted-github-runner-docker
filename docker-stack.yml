@@ -1,3 +1,4 @@
+---
 services:
   github-runner:
     image: wydler/runner-images-hetzner-cloud:20260620.0004.1
